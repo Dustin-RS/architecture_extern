@@ -1,0 +1,519 @@
+@startuml
+' Пакеты (логическая группировка)
+
+' ------------------------
+' CATALOG
+' ------------------------
+package "catalog" {
+  interface ICategoryFamilyFactory {
+    +create_product(attrs: Map<String, Object>): AbstractProduct
+    +create_validator(): IValidator
+    +create_index_mapper(): IIndexMapper
+  }
+
+  class CategoryRegistry {
+    -factories: Map<String, ICategoryFamilyFactory>
+    +registerFactory(code: String, f: ICategoryFamilyFactory): void
+    +getFactory(code: String): ICategoryFamilyFactory
+  }
+
+  abstract class AbstractProduct {
+    -id: UUID
+    -title: String
+    -price: Money
+    -attributes: Map<String, Object>
+    +validate(): void
+    +getId(): UUID
+    +getTitle(): String
+    +getPrice(): Money
+    +getAttributes(): Map<String, Object>
+  }
+
+  class ElectronicProduct {
+    -warrantyMonths: int
+    -brand: String
+    -model: String
+    +getWarrantyMonths(): int
+    +getBrand(): String
+    +getModel(): String
+  }
+
+  class ClothingProduct {
+    -size: String
+    -material: String
+    -gender: String
+    +getSize(): String
+    +getMaterial(): String
+    +getGender(): String
+  }
+
+  class BookProduct {
+    -author: String
+    -genre: String
+    -publicationYear: int
+    +getAuthor(): String
+    +getGenre(): String
+    +getPublicationYear(): int
+  }
+}
+
+' ------------------------
+' CATALOG.TREE (Composite)
+' ------------------------
+package "catalog.tree" {
+  abstract class CategoryComponent {
+    -name: String
+    +getName(): String
+    +getChildren(): List<CategoryComponent>
+  }
+
+  class CategoryLeaf {
+    -name: String
+    +getName(): String
+    +getChildren(): List<CategoryComponent>
+  }
+
+  class CategoryComposite {
+    -name: String
+    -children: List<CategoryComponent>
+    +add(component: CategoryComponent): void
+    +remove(component: CategoryComponent): void
+    +getChildren(): List<CategoryComponent>
+  }
+}
+
+' ------------------------
+' LISTINGS
+' ------------------------
+package "listings" {
+  class ListingDTO {
+    +title: String
+    +price: Money
+    +categoryCode: String
+    +attributes: Map<String, Object>
+    +sellerId: UUID
+  }
+
+  class Listing {
+    -id: UUID
+    -productType: String
+    -payload: Map<String, Object>
+    -createdAt: DateTime
+    -sellerId: UUID
+    +getId(): UUID
+    +getProductType(): String
+    +getPayload(): Map<String, Object>
+    +getCreatedAt(): DateTime
+    +getSellerId(): UUID
+  }
+
+  class ListingService {
+    +create_listing(dto: ListingDTO): Listing
+    +get_listing(id: UUID): Listing
+    +update_listing(id: UUID, dto: ListingDTO): Listing
+    +delete_listing(id: UUID): void
+  }
+
+  interface IListingRepository {
+    +save(listing: Listing): void
+    +find(id: UUID): Listing
+    +update(id: UUID, listing: Listing): void
+    +delete(id: UUID): void
+  }
+
+  class ListingRepository {
+    -connection: DBConnection
+    +save(listing: Listing): void
+    +find(id: UUID): Listing
+    +update(id: UUID, listing: Listing): void
+    +delete(id: UUID): void
+  }
+
+  class ListingRepositoryCacheProxy {
+    -storage: ListingRepository
+    -cache: Map<UUID, Listing>
+    +find(id: UUID): Listing
+    +save(listing: Listing): void
+    +update(id: UUID, listing: Listing): void
+    +delete(id: UUID): void
+  }
+}
+
+' ------------------------
+' ORDERS
+' ------------------------
+package "orders" {
+  class Item {
+    -listingId: UUID
+    -quantity: int
+    -pricePerUnit: Money
+    +getListingId(): UUID
+    +getQuantity(): int
+    +getPricePerUnit(): Money
+  }
+
+  interface IOrderBuilder {
+    +with_items(items: List<Item>): IOrderBuilder
+    +with_buyer(buyer: User): IOrderBuilder
+    +with_shipping(point: PickupPoint): IOrderBuilder
+    +build(): Order
+  }
+
+  class ConcreteOrderBuilder {
+    -items: List<Item>
+    -buyer: User
+    -shippingPoint: PickupPoint
+    +with_items(items: List<Item>): IOrderBuilder
+    +with_buyer(buyer: User): IOrderBuilder
+    +with_shipping(point: PickupPoint): IOrderBuilder
+    +build(): Order
+  }
+
+  class Order {
+    -id: UUID
+    -items: List<Item>
+    -total: Money
+    -buyerId: UUID
+    -status: OrderStatus
+    +calculateTotal(): Money
+    +getId(): UUID
+    +getItems(): List<Item>
+    +getTotal(): Money
+    +getBuyerId(): UUID
+    +getStatus(): OrderStatus
+    +setStatus(s: OrderStatus): void
+  }
+
+  abstract class OrderState {
+    -name: String
+    +pay(context: OrderContext): void
+    +cancel(context: OrderContext): void
+    +ship(context: OrderContext): void
+    +deliver(context: OrderContext): void
+    +getName(): String
+  }
+
+  class CreatedState {
+    +pay(context: OrderContext): void
+    +cancel(context: OrderContext): void
+    +ship(context: OrderContext): void
+    +deliver(context: OrderContext): void
+  }
+
+  class PaidState {
+    +pay(context: OrderContext): void
+    +cancel(context: OrderContext): void
+    +ship(context: OrderContext): void
+    +deliver(context: OrderContext): void
+  }
+
+  class ReservedState {
+    +pay(context: OrderContext): void
+    +cancel(context: OrderContext): void
+    +ship(context: OrderContext): void
+    +deliver(context: OrderContext): void
+  }
+
+  class ShippedState {
+    +pay(context: OrderContext): void
+    +cancel(context: OrderContext): void
+    +ship(context: OrderContext): void
+    +deliver(context: OrderContext): void
+  }
+
+  class CancelledState {
+    +pay(context: OrderContext): void
+    +cancel(context: OrderContext): void
+    +ship(context: OrderContext): void
+    +deliver(context: OrderContext): void
+  }
+
+  class OrderContext {
+    -state: OrderState
+    -order: Order
+    +OrderContext(order: Order)
+    +setState(s: OrderState): void
+    +pay(): void
+    +cancel(): void
+    +ship(): void
+    +deliver(): void
+    +getState(): OrderState
+    +getOrder(): Order
+  }
+
+  abstract class OrderHandler {
+    -next: OrderHandler
+    +setNext(h: OrderHandler): OrderHandler
+    +handle(ctx: OrderContext): boolean
+  }
+
+  class CartValidationHandler {
+    +setNext(h: OrderHandler): OrderHandler
+    +handle(ctx: OrderContext): boolean
+  }
+
+  class StockReservationHandler {
+    +setNext(h: OrderHandler): OrderHandler
+    +handle(ctx: OrderContext): boolean
+  }
+
+  class PaymentValidationHandler {
+    +setNext(h: OrderHandler): OrderHandler
+    +handle(ctx: OrderContext): boolean
+  }
+
+  class FraudCheckHandler {
+    +setNext(h: OrderHandler): OrderHandler
+    +handle(ctx: OrderContext): boolean
+  }
+
+  interface ICommand {
+    +execute(): CommandResult
+    +undo(): void
+  }
+
+  class PlaceOrderCommand {
+    -order: Order
+    +PlaceOrderCommand(order: Order)
+    +execute(): CommandResult
+    +undo(): void
+  }
+
+  class CapturePaymentCommand {
+    -order: Order
+    +CapturePaymentCommand(order: Order)
+    +execute(): CommandResult
+    +undo(): void
+  }
+
+  class CommandBus {
+    -queue: List<ICommand>
+    -history: List<ICommand>
+    +enqueue(cmd: ICommand): void
+    +executeNext(): CommandResult
+    +undoLast(): void
+    +getQueue(): List<ICommand>
+  }
+}
+
+' ------------------------
+' PAYMENTS
+' ------------------------
+package "payments" {
+  interface IPaymentGateway {
+    +authorize(amount: Money, data: Map<String, Object>): PaymentResponse
+    +capture(txId: String): PaymentResponse
+    +refund(txId: String): PaymentResponse
+  }
+
+  interface IPaymentStrategy {
+    +execute_payment(order: Order, payment_data: Map<String, Object>): PaymentResult
+  }
+
+  class StripeAdapter {
+    -apiKey: String
+    +authorize(amount: Money, data: Map<String, Object>): PaymentResponse
+    +capture(txId: String): PaymentResponse
+    +refund(txId: String): PaymentResponse
+  }
+
+  class PayPalAdapter {
+    -clientId: String
+    -clientSecret: String
+    +authorize(amount: Money, data: Map<String, Object>): PaymentResponse
+    +capture(txId: String): PaymentResponse
+    +refund(txId: String): PaymentResponse
+  }
+
+  class BankAdapter {
+    -endpoint: String
+    +authorize(amount: Money, data: Map<String, Object>): PaymentResponse
+    +capture(txId: String): PaymentResponse
+    +refund(txId: String): PaymentResponse
+  }
+
+  class StripeStrategy {
+    -gateway: IPaymentGateway
+    +StripeStrategy(gateway: IPaymentGateway)
+    +execute_payment(order: Order, payment_data: Map<String, Object>): PaymentResult
+  }
+
+  class PayPalStrategy {
+    -gateway: IPaymentGateway
+    +PayPalStrategy(gateway: IPaymentGateway)
+    +execute_payment(order: Order, payment_data: Map<String, Object>): PaymentResult
+  }
+
+  class BankStrategy {
+    -gateway: IPaymentGateway
+    +BankStrategy(gateway: IPaymentGateway)
+    +execute_payment(order: Order, payment_data: Map<String, Object>): PaymentResult
+  }
+
+  class PaymentGatewayProxy {
+    -inner: IPaymentGateway
+    -retryPolicy: RetryPolicy
+    +PaymentGatewayProxy(inner: IPaymentGateway, retryPolicy: RetryPolicy)
+    +authorize(amount: Money, data: Map<String, Object>): PaymentResponse
+    +capture(txId: String): PaymentResponse
+    +refund(txId: String): PaymentResponse
+  }
+}
+
+' ------------------------
+' EVENTS
+' ------------------------
+package "events" {
+  interface IEvent {}
+
+  class OrderPlacedEvent {
+    -orderId: UUID
+    -userId: UUID
+    -amount: Money
+    -timestamp: DateTime
+    +OrderPlacedEvent(orderId: UUID, userId: UUID, amount: Money, timestamp: DateTime)
+    +getOrderId(): UUID
+    +getUserId(): UUID
+    +getAmount(): Money
+    +getTimestamp(): DateTime
+  }
+
+  interface IEventHandler {
+    +handle(e: IEvent): void
+  }
+
+  class EmailNotifier {
+    +handle(e: IEvent): void
+  }
+
+  class SellerNotifier {
+    +handle(e: IEvent): void
+  }
+
+  class AnalyticsHandler {
+    +handle(e: IEvent): void
+  }
+
+  class EventBus {
+    -subscribers: Map<Class, List<IEventHandler>>
+    +subscribe(type: Class, handler: IEventHandler): void
+    +publish(e: IEvent): void
+    +unsubscribe(type: Class, handler: IEventHandler): void
+  }
+}
+
+' ------------------------
+' PRICING
+' ------------------------
+package "pricing" {
+  interface IPriceCalculator {
+    +calculate(listing: Listing, ctx: PricingContext): Money
+  }
+
+  class BasePriceCalculator {
+    +calculate(listing: Listing, ctx: PricingContext): Money
+  }
+
+  class PromotionDecorator {
+    -next: IPriceCalculator
+    +PromotionDecorator(next: IPriceCalculator)
+    +calculate(listing: Listing, ctx: PricingContext): Money
+  }
+
+  class TaxDecorator {
+    -next: IPriceCalculator
+    -taxRate: float
+    +TaxDecorator(next: IPriceCalculator, taxRate: float)
+    +calculate(listing: Listing, ctx: PricingContext): Money
+  }
+
+  class LoyaltyDecorator {
+    -next: IPriceCalculator
+    -loyaltyLevel: String
+    +LoyaltyDecorator(next: IPriceCalculator, loyaltyLevel: String)
+    +calculate(listing: Listing, ctx: PricingContext): Money
+  }
+}
+
+' ------------------------
+' Наследования / реализации
+' ------------------------
+AbstractProduct <|-- ElectronicProduct
+AbstractProduct <|-- ClothingProduct
+AbstractProduct <|-- BookProduct
+
+ICategoryFamilyFactory <|.. ElectronicsFamilyFactory
+ICategoryFamilyFactory <|.. ClothingFamilyFactory
+
+CategoryComponent <|-- CategoryLeaf
+CategoryComponent <|-- CategoryComposite
+
+IListingRepository <|.. ListingRepository
+IListingRepository <|.. ListingRepositoryCacheProxy
+
+IOrderBuilder <|.. ConcreteOrderBuilder
+
+OrderState <|-- CreatedState
+OrderState <|-- PaidState
+OrderState <|-- ReservedState
+OrderState <|-- ShippedState
+OrderState <|-- CancelledState
+
+OrderHandler <|-- CartValidationHandler
+OrderHandler <|-- StockReservationHandler
+OrderHandler <|-- PaymentValidationHandler
+OrderHandler <|-- FraudCheckHandler
+
+IPaymentGateway <|.. StripeAdapter
+IPaymentGateway <|.. PayPalAdapter
+IPaymentGateway <|.. BankAdapter
+
+IPaymentStrategy <|.. StripeStrategy
+IPaymentStrategy <|.. PayPalStrategy
+IPaymentStrategy <|.. BankStrategy
+
+IEvent <|-- OrderPlacedEvent
+IEventHandler <|-- EmailNotifier
+IEventHandler <|-- SellerNotifier
+IEventHandler <|-- AnalyticsHandler
+
+IPriceCalculator <|-- BasePriceCalculator
+IPriceCalculator <|-- PromotionDecorator
+IPriceCalculator <|-- TaxDecorator
+IPriceCalculator <|-- LoyaltyDecorator
+
+ICommand <|-- PlaceOrderCommand
+ICommand <|-- CapturePaymentCommand
+
+' ------------------------
+' Ассоциации / композиция / агрегация / зависимости
+' ------------------------
+CategoryRegistry --> ICategoryFamilyFactory : "0..* registers"
+CategoryComposite *-- CategoryComponent : "1..* children (composition)"
+
+ListingService ..> ICategoryFamilyFactory : "uses (dependency)"
+ListingService --> IListingRepository : "1 uses (association)"
+ListingRepositoryCacheProxy o-- ListingRepository : "wraps (aggregation)"
+
+ConcreteOrderBuilder --> Order : "builds (dependency)"
+OrderContext *-- OrderState : "owns current state (composition)"
+OrderContext --> Order : "1 has (association)"
+
+OrderHandler --> OrderContext : "handle(ctx) (dependency)"
+CartValidationHandler --> OrderHandler : "setNext() (association)"
+
+CommandBus o-- ICommand : "queues/holds (aggregation)"
+CommandBus --> CommandResult : "returns"
+
+' (CheckoutService not shown as class, retained relation)
+' CheckoutService ..> IPaymentStrategy : "uses (dependency)"
+IPaymentStrategy --> IPaymentGateway : "calls (association)"
+PaymentGatewayProxy ..|> IPaymentGateway : "implements (proxy)"
+
+EventBus o-- IEventHandler : "subscribers (aggregation)"
+EventBus --> IEvent : "publishes (dependency)"
+
+BasePriceCalculator <|-- PromotionDecorator
+PromotionDecorator --> IPriceCalculator : "wraps (aggregation)"
+
+@enduml
